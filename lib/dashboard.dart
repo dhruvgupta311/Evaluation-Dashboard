@@ -1,5 +1,5 @@
+// dhruv_311 project
 import 'dart:developer';
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mentor/models/student.dart';
@@ -167,7 +167,7 @@ class _EvaluationDashboardPageState extends State<EvaluationDashboardPage> {
                   items: unassignedStudents
                       .map<DropdownMenuItem<Student>>((Student student) {
                     return DropdownMenuItem<Student>(
-                      value: student,
+                      value: student, // Ensure each value is unique
                       child: Text(student.name),
                     );
                   }).toList(),
@@ -178,11 +178,28 @@ class _EvaluationDashboardPageState extends State<EvaluationDashboardPage> {
                 onPressed: () async {
                   if (selectedStudent != null && selectedMentor != null) {
                     if (selectedMentor!.assignedStudents.length < 4) {
-                      // Update the Firestore documents
-                      log(selectedStudent!.uid);
                       await updateFirestore(
                           selectedStudent!.uid, selectedMentor!.uid);
-                    } else {
+                      showDialog(
+                        context: context,
+                        builder: (BuildContext context) {
+                          return AlertDialog(
+                            title: const Text('Changes Saved'),
+                            content: const Text(
+                                'Please restart the app to reflect the changes from database.'),
+                            actions: <Widget>[
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                },
+                                child: const Text('OK'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    } 
+                    else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text(
@@ -212,16 +229,25 @@ class _EvaluationDashboardPageState extends State<EvaluationDashboardPage> {
                       TextEditingController(text: s.ideationMarks);
                   TextEditingController vivaController =
                       TextEditingController(text: s.vivaMarks);
-
+                  // print(s);
+                  // print(*****************************************************************************************);
                   // print(s);
                   return Card(
                     elevation: 3,
                     child: ListTile(
                       title: Text(s.name),
                       subtitle: Text(
-                        s.isAssigned ? 'Marks assigned' : 'Marks not assigned',
+                        s.executionMarks == "0" ||
+                                s.ideationMarks == "0" ||
+                                s.vivaMarks == "0"
+                            ? 'Marks not assigned'
+                            : 'Marks assigned',
                         style: TextStyle(
-                          color: s.isAssigned ? Colors.green : Colors.red,
+                          color: s.executionMarks == "0" ||
+                                  s.ideationMarks == "0" ||
+                                  s.vivaMarks == "0"
+                              ? Colors.red
+                              : Colors.green,
                         ),
                       ),
                       trailing: Row(
@@ -234,7 +260,6 @@ class _EvaluationDashboardPageState extends State<EvaluationDashboardPage> {
                                 context: context,
                                 barrierDismissible: false,
                                 builder: (BuildContext context) {
-                                  // Calculate total marks
                                   int totalMarks =
                                       int.parse(executionController.text) +
                                           int.parse(ideationController.text) +
@@ -343,15 +368,41 @@ class _EvaluationDashboardPageState extends State<EvaluationDashboardPage> {
                                                   'ideationMarks':
                                                       ideationController.text
                                                 });
+                                                setState(() {
+                                                  s.vivaMarks =
+                                                      vivaController.text;
+                                                  s.executionMarks =
+                                                      executionController.text;
+                                                  s.ideationMarks =
+                                                      ideationController.text;
+                                                });
                                                 if (context.mounted) {
-                                                  // ScaffoldMessenger.of(context)
-                                                  //     .showSnackBar(
-                                                  //   const SnackBar(
-                                                  //     content: Text(
-                                                  //         'Marks saved successfully.'),
-                                                  //   ),
-                                                  // );
-                                                  Navigator.of(context).pop();
+                                                  showDialog(
+                                                    context: context,
+                                                    builder:
+                                                        (BuildContext context) {
+                                                      return AlertDialog(
+                                                        title: const Text(
+                                                            'Success'),
+                                                        content: const Text(
+                                                            'Marks saved successfully Please Restart App'),
+                                                        actions: <Widget>[
+                                                          TextButton(
+                                                            onPressed: () {
+                                                              Navigator.of(
+                                                                      context)
+                                                                  .pop();
+                                                              Navigator.of(
+                                                                      context)
+                                                                  .pop();
+                                                            },
+                                                            child: const Text(
+                                                                'OK'),
+                                                          ),
+                                                        ],
+                                                      );
+                                                    },
+                                                  );
                                                 }
                                               },
                                             ),
@@ -380,12 +431,26 @@ class _EvaluationDashboardPageState extends State<EvaluationDashboardPage> {
                                     .doc(s.uid)
                                     .update({'isAssigned': false});
                                 await FirebaseFirestore.instance
+                                    .collection('students')
+                                    .doc(s.uid)
+                                    .update({'executionMarks': "0"});
+                                await FirebaseFirestore.instance
+                                    .collection('students')
+                                    .doc(s.uid)
+                                    .update({'ideationMarks': "0"});
+                                await FirebaseFirestore.instance
+                                    .collection('students')
+                                    .doc(s.uid)
+                                    .update({'vivaMarks': "0"});
+                                await FirebaseFirestore.instance
                                     .collection('mentors')
                                     .doc(selectedMentor!.uid)
                                     .update({
                                   'assignedStudents':
                                       FieldValue.arrayRemove([s.uid]),
                                 });
+                                await fetchMentorsFromFirebase();
+                                await fetchUnassignedStudentsFromFirebase();
                               } else {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
@@ -438,9 +503,9 @@ class _EvaluationDashboardPageState extends State<EvaluationDashboardPage> {
 
       if (data != null) {
         setState(() {
-          selectedStudent!.executionMarks = data['executionMarks'] ?? 0;
-          selectedStudent!.ideationMarks = data['ideationMarks'] ?? 0;
-          selectedStudent!.vivaMarks = data['vivaMarks'] ?? 0;
+          selectedStudent!.executionMarks = data['executionMarks'] ?? "";
+          selectedStudent!.ideationMarks = data['ideationMarks'] ?? "";
+          selectedStudent!.vivaMarks = data['vivaMarks'] ?? "";
         });
       } else {
         // print('No data found for student with ID: $studentId');
@@ -453,7 +518,6 @@ class _EvaluationDashboardPageState extends State<EvaluationDashboardPage> {
 
   Future<void> updateFirestore(String studentId, String mentorId) async {
     try {
-      // Remove the student from the unassigned students list in Firestore
       await FirebaseFirestore.instance
           .collection('students')
           .doc(studentId)
